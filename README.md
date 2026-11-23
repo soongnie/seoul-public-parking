@@ -5,7 +5,7 @@
 
 - 작성자: 박수연
 - 수업: 산업데이터시각화
-- 배포 앱: [배포 주소 입력]
+- 배포 앱: [https://seoul-public-parking.streamlit.app/](https://seoul-public-parking.streamlit.app/)
 
 ## 1. 분석 질문
 
