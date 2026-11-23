@@ -130,9 +130,9 @@ st.markdown(
 st.markdown(
     """<div class="hero">
 <div class="eyebrow">SEOUL PARKING / PUBLIC DATA EXPLORER</div>
-<h1>서울 공영주차장의 자치구별 차이<br>규모·요금 유형·위치를 중심으로</h1>
-<p>자치구별 공영주차장의 규모와 요금 유형을 비교합니다.
-원하는 조건의 주차장을 지도와 목록에서 확인하세요.</p>
+<h1>서울 공영주차장, 자치구별 탐색<br>규모·요금 유형·위치를 한눈에</h1>
+<p>자치구별 주차면수를 비교하고, 선택한 지역의 주차장 규모와 요금 유형을 살펴보세요.
+원하는 조건의 주차장은 지도와 목록에서 확인할 수 있습니다.</p>
 </div>""",
     unsafe_allow_html=True
 )
