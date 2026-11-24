@@ -1641,136 +1641,152 @@ with tab3:
 
     with right:
 
-        st.markdown(
-            "#### 주차장 규모 분포"
-        )
+        st.markdown("#### 주차장 규모 분포")
 
-
-        sizes = (
-            view["규모_면"]
-            .dropna()
-        )
-
+        sizes = view["규모_면"].dropna()
+        sizes = sizes.loc[np.isfinite(sizes)]
 
         if sizes.empty:
-
-            st.info(
-                "유효한 주차구획수 정보가 없습니다."
-            )
+            st.info("유효한 주차구획수 정보가 없습니다.")
 
         else:
+            # 상자와 경계선에 같은 사분위수 사용
+            q1 = sizes.quantile(0.25)
+            median = sizes.median()
+            q3 = sizes.quantile(0.75)
+            mean = sizes.mean()
 
-            q1 = (
-                sizes.quantile(
-                    .25
-                )
-            )
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
 
-            median = (
-                sizes.median()
-            )
+            # 경계 안에 있는 실제 데이터로 수염 끝 계산
+            inside = sizes.loc[
+                sizes.between(lower_bound, upper_bound)
+            ]
 
-            q3 = (
-                sizes.quantile(
-                    .75
-                )
-            )
+            lower_whisker = inside.min()
+            upper_whisker = inside.max()
 
+            # 경계 밖의 데이터
+            outliers = sizes.loc[
+                (sizes < lower_bound)
+                | (sizes > upper_bound)
+            ]
 
             box = go.Figure()
 
-
             box.add_trace(
-
                 go.Box(
+                    q1=[q1],
+                    median=[median],
+                    q3=[q3],
+                    lowerfence=[lower_whisker],
+                    upperfence=[upper_whisker],
+                    mean=[mean],
+                    y=[0],
+                    orientation="h",
+                    boxmean=True,
+                    boxpoints=False,
+                    fillcolor="rgba(32, 59, 96, 0.35)",
+                    line_color=NAVY,
+                    name=selected_district,
+                    hoverinfo="skip"
+                )
+            )
 
-                    x=
-                    sizes,
-
-                    name=
-                    selected_district,
-
-                    orientation=
-                    "h",
-
-                    boxmean=
-                    True,
-
-                    marker_color=
-                    TEAL,
-
-                    line_color=
-                    NAVY,
-
-                    hovertemplate=
-                    "%{x:,.0f}면"
-                    "<extra></extra>"
-
+            # 경계 밖의 기록은 점으로 표시
+            if not outliers.empty:
+                box.add_trace(
+                    go.Scatter(
+                        x=outliers.tolist(),
+                        y=[0] * len(outliers),
+                        mode="markers",
+                        marker=dict(size=8, color=TEAL),
+                        showlegend=False,
+                        hovertemplate="%{x:,.0f}면<extra></extra>"
+                    )
                 )
 
+            style(box, 320)
+
+            # 평균 점선과 구별되도록 경계는 주황색 파선
+            box.add_vline(
+                x=lower_bound,
+                line_dash="dash",
+                line_color=ORANGE,
+                annotation_text="하한 경계",
+                annotation_position="top right"
             )
 
-
-            style(
-                box,
-                270
+            box.add_vline(
+                x=upper_bound,
+                line_dash="dash",
+                line_color=ORANGE,
+                annotation_text="상한 경계",
+                annotation_position="top left"
             )
 
+            # 음수인 하한 경계도 화면에 표시
+            axis_min = min(sizes.min(), lower_bound)
+            axis_max = max(sizes.max(), upper_bound)
+            padding = max((axis_max - axis_min) * 0.1, 5)
 
             box.update_xaxes(
-
-                title=
-                "주차구획수 (면)",
-
-                showgrid=
-                True,
-
-                gridcolor=
-                "#E8EDF2"
-
+                title="주차구획수 (면)",
+                range=[
+                    axis_min - padding,
+                    axis_max + padding
+                ],
+                showgrid=True,
+                gridcolor="#E8EDF2"
             )
-
 
             box.update_yaxes(
-                showticklabels=False
+                showticklabels=False,
+                showgrid=False,
+                zeroline=False,
+                range=[-0.6, 0.6]
             )
 
+            box.update_layout(showlegend=False)
 
-            # 겹쳐 나오는 기본 설명창 끄기
-            box.update_traces(
-                hovertemplate=None,
-                hoverinfo="skip"
-            )
+            show(box, "district_box")
 
-            show(
-                box,
-                "district_box"
-            )
-
-            # 주요 통계값을 그래프 아래에 표시
             st.markdown(
                 f"**최솟값:** {fmt_num(sizes.min(), '면')} · "
                 f"**중앙값:** {fmt_num(median, '면')} · "
-                f"**평균:** {fmt_num(sizes.mean(), '면')} · "
+                f"**평균:** {fmt_num(mean, '면')} · "
                 f"**최댓값:** {fmt_num(sizes.max(), '면')}"
             )
 
-
-            st.caption(
-                "상자는 전체 데이터의 중간 50% 구간을 나타냅니다. "
-                "상자 안의 실선은 중앙값, 점선은 평균입니다. "
-                "수염 밖의 점은 이상치 판정 기준을 벗어난 값이며, "
-                "반드시 데이터 오류를 뜻하지는 않습니다."
-            )
-
-
             insight(
-                f"중앙값은 "
-                f"{fmt_num(median, '면')}이며, "
-                f"중간 50%의 주차장은 약 "
+                f"중앙값은 {fmt_num(median, '면')}이며, "
+                f"중간 50%의 등록 기록은 약 "
                 f"{fmt_num(q1, '면')}~"
                 f"{fmt_num(q3, '면')} 범위입니다."
             )
+
+            st.caption(
+                f"하한 경계(Q1−1.5×IQR): "
+                f"{fmt_num(lower_bound, '면')} / "
+                f"상한 경계(Q3+1.5×IQR): "
+                f"{fmt_num(upper_bound, '면')}"
+            )
+
+            st.caption(
+                "상자는 중간 50% 구간이며, "
+                "상자 안의 실선은 중앙값, 점선은 평균입니다. "
+                "주황색 파선은 이상치 판단 경계이고, "
+                "수염은 경계 안에 있는 실제 데이터까지 이어집니다. "
+                "경계 밖의 점이 반드시 데이터 오류를 뜻하지는 않습니다."
+            )
+
+            if lower_bound < 0:
+                st.caption(
+                    "음수인 하한 경계는 계산으로 나온 기준이며, "
+                    "주차구획수가 음수인 기록이 있다는 뜻은 아닙니다."
+                )
 
 
     # -------------------------------------------------
@@ -1859,7 +1875,14 @@ with tab3:
         "%{text:.2f}배",
 
         textposition=
-        "outside"
+        "outside",
+
+        hovertemplate=(
+            "%{x}<br>"
+            "자치구 평균 대비 %{y:.4f}배"
+            "<extra></extra>"
+        )
+
 
     )
 
@@ -2034,22 +2057,16 @@ with tab4:
     )
 
     st.write(
-        "**규모별 비율 히트맵** · 주차장 크기를 비교하기 위해 "
-        "50면 미만, 50~99면, 100~199면, 200면 이상으로 구간을 나눴습니다. "
-        "각 구의 규모 정보가 유효한 등록 데이터 건수를 기준으로 비율을 계산했으며, "
-        "한 행의 합계는 약 100%입니다. "
-        "이는 주차장 데이터의 건수 비율이며, 주차 칸 수의 비율은 아닙니다. "
-        "유효한 규모 데이터가 없는 구는 빈칸으로 표시합니다."
-    )
-
-    st.write(
-        "**박스플롯** · 상자는 제1사분위수(Q1)부터 제3사분위수(Q3)까지의 "
-        "중간 50% 구간을 나타냅니다. "
+        "박스플롯 · 상자는 제1사분위수(Q1)부터 "
+        "제3사분위수(Q3)까지의 중간 50% 구간을 나타냅니다. "
         "상자 안의 실선은 중앙값, 점선은 평균입니다. "
-        "수염은 Q1−1.5×IQR부터 Q3+1.5×IQR 사이에 있는 관측값까지 뻗으며, "
-        "IQR은 Q3−Q1입니다. "
-        "수염 밖의 점은 이 기준을 벗어난 값으로, 반드시 데이터 오류를 뜻하지는 않습니다."
-    )
+        "IQR은 Q3−Q1이며, 주황색 파선은 "
+        "하한 경계(Q1−1.5×IQR)와 상한 경계(Q3+1.5×IQR)를 나타냅니다. "
+        "수염은 두 경계 안에 있는 실제 데이터의 최솟값과 최댓값까지 뻗습니다. "
+        "따라서 수염 끝과 경계선은 일치하지 않을 수 있습니다. "
+        "경계를 벗어난 값은 별도의 점으로 표시하며, "
+        "반드시 데이터 오류를 뜻하지는 않습니다."
+        )
 
 
 
