@@ -460,124 +460,6 @@ seoul["원자료행"] = (
 
 seoul["행ID"] = seoul["원자료행"].astype(str)
 
-# =========================================================
-# 10. 요금 상세 열 자동 탐색
-# =========================================================
-
-base_time_col = detect_col(
-    seoul,
-    [
-        "기본주차시간",
-        "기본시간"
-    ]
-)
-
-
-base_fee_col = detect_col(
-    seoul,
-    [
-        "기본주차요금",
-        "기본요금"
-    ]
-)
-
-
-add_time_col = detect_col(
-    seoul,
-    [
-        "추가단위시간",
-        "추가시간"
-    ]
-)
-
-
-add_fee_col = detect_col(
-    seoul,
-    [
-        "추가단위요금",
-        "추가요금"
-    ]
-)
-
-
-HAS_FEE_DETAIL = all(
-    [
-        base_time_col,
-        base_fee_col,
-        add_time_col,
-        add_fee_col
-    ]
-)
-
-
-# =========================================================
-# 11. 1시간 예상 요금 계산
-# =========================================================
-
-if HAS_FEE_DETAIL:
-
-    seoul["_기본시간"] = clean_number(
-        seoul[base_time_col]
-    )
-
-    seoul["_기본요금"] = clean_number(
-        seoul[base_fee_col]
-    )
-
-    seoul["_추가시간"] = clean_number(
-        seoul[add_time_col]
-    )
-
-    seoul["_추가요금"] = clean_number(
-        seoul[add_fee_col]
-    )
-
-
-    def estimate_fee_60(row):
-
-        # 무료로 분류된 기록은 0원으로 처리
-        if row["요금유형"] == "무료":
-            return 0.0
-
-        # 요금 유형을 모르면 계산하지 않음
-        if row["요금유형"] not in ["유료", "혼합"]:
-            return np.nan
-
-        bt = row["_기본시간"]
-        bf = row["_기본요금"]
-        at = row["_추가시간"]
-        af = row["_추가요금"]
-
-        # 기본시간과 기본요금이 유효한지 확인
-        if not np.isfinite(bt) or not np.isfinite(bf):
-            return np.nan
-
-        if bt <= 0 or bf < 0:
-            return np.nan
-
-        # 60분이 기본시간 안에 포함되는 경우
-        if bt >= 60:
-            return float(bf)
-
-        # 추가시간과 추가요금이 유효한지 확인
-        if not np.isfinite(at) or not np.isfinite(af):
-            return np.nan
-
-        if at <= 0 or af < 0:
-            return np.nan
-
-        extra_units = math.ceil((60 - bt) / at)
-
-        total = bf + extra_units * af
-
-        return float(total)
-
-
-    seoul["1시간예상요금"] = seoul.apply(
-        estimate_fee_60,
-        axis=1
-    )
-
 
 # =========================================================
 # 12. 자치구 목록
@@ -795,7 +677,7 @@ with st.sidebar:
 
 
     min_spaces = st.number_input(
-        "최소 주차구획수",
+        "최소 주차면수",
         min_value=0,
         max_value=max(
             0,
@@ -810,11 +692,10 @@ with st.sidebar:
 
 
     st.caption(
-        "요금 유형·최소 주차구획수 필터는 "
-        "'주차장 찾기' 탭 전체와 "
-        "'데이터·한계' 탭의 목록·CSV 다운로드에 적용됩니다. "
-        "상단 요약 지표와 '선택 지역 분석'은 선택한 자치구 전체, "
-        "'서울 전체 비교'는 서울 전체 데이터를 기준으로 합니다."
+        "요금 유형·최소 주차면수 필터는 '주차장 찾기'와 "
+        "'데이터·한계'의 목록·CSV 다운로드에 적용됩니다. "
+        "상단 지표와 '선택 지역 분석'은 선택한 구 전체, "
+        "'서울 전체 비교'는 서울 전체 등록 데이터를 사용합니다."
     )
 
 
@@ -867,7 +748,7 @@ c1, c2, c3, c4 = st.columns(4)
 
 
 c1.metric(
-    "등록 주차장 데이터",
+    "주차장 등록 건수",
     f"{int(summary_row['데이터건수']):,}건"
 )
 
@@ -878,7 +759,7 @@ c1.caption(
 
 
 c2.metric(
-    "주차구획수 합계",
+    "총 주차면수",
     fmt_num(summary_row["총주차면"], "면")
 )
 
@@ -900,7 +781,7 @@ c3.caption(
 
 
 c4.metric(
-    "무료 데이터 비율",
+    "무료 비율",
     f"{summary_row['무료비율']:.1f}%"
 )
 
@@ -912,8 +793,8 @@ c4.caption(
 
 
 note(
-    "단순 주차장 건수만으로 지역의 주차 환경을 판단하지 않고, "
-    "등록 건수·총 주차면수·전형적인 주차장 규모·무료 비율을 함께 비교합니다."
+    "주차장 등록 건수·총 주차면수·주차장 규모 중앙값·무료 비율을 함께 비교합니다. "
+    "주차장 등록 건수는 원자료의 행 수이며, 동일 시설의 중복 등록이 포함될 수 있습니다."
 )
 
 
@@ -967,15 +848,36 @@ with tab1:
         valid_coords
     ].copy()
 
+    st.markdown(
+        f"**조건에 맞는 주차장 등록 건수 {len(filtered_view):,}건 "
+        f"· 지도 표시 {len(map_data):,}건**"
+    )
 
-    if map_data.empty:
+    excluded_count = len(filtered_view) - len(map_data)
 
+    if excluded_count > 0:
+        st.caption(
+            f"좌표 정보가 없거나 유효하지 않은 "
+            f"{excluded_count:,}건은 지도에서 제외했습니다."
+        )
+
+    if not selected_fee_types:
+        st.info("요금 유형을 하나 이상 선택해 주세요.")
+
+    elif filtered_view.empty:
         st.info(
-            "현재 필터 조건에서 지도에 표시할 수 있는 "
-            "주차장이 없습니다."
+            "조건에 맞는 기록이 없습니다. "
+            "최소 주차면수를 낮추거나 요금 유형을 추가해 주세요."
+        )
+
+    elif map_data.empty:
+        st.info(
+            "조건에 맞는 기록은 있지만, 지도에 표시할 유효한 좌표가 없습니다. "
+            "'데이터·한계' 탭에서 목록을 확인해 주세요."
         )
 
     else:
+
 
         map_fig = px.scatter_map(
 
@@ -1068,10 +970,8 @@ with tab1:
 
 
         st.caption(
-            f"현재 필터 기준 "
-            f"{len(map_data):,}건 표시 · "
-            "점 위에 마우스를 올리면 "
-            "주차장명·규모·주소를 볼 수 있습니다."
+            "점 위에 마우스를 올리면 주차장명·주차면수·주소를 확인할 수 있습니다. "
+            "같은 좌표의 기록은 점이 겹칠 수 있습니다."
         )
 
 
@@ -1102,13 +1002,10 @@ with tab1:
 
 
     if top10_map.empty:
-
-        st.info(
-            "현재 조건에서 주차구획수 정보가 있는 "
-            "주차장이 없습니다."
-        )
+        pass
 
     else:
+
 
         top10_plot = top10_map.sort_values(
             "규모_면"
@@ -1244,9 +1141,9 @@ with tab2:
 
         [
             "총 주차면수",
-            "등록 데이터 건수",
+            "주차장 등록 건수",
             "주차장 규모 중앙값",
-            "무료 데이터 비율"
+            "무료 비율"
         ]
 
     )
@@ -1260,7 +1157,7 @@ with tab2:
             "면"
         ),
 
-        "등록 데이터 건수":
+        "주차장 등록 건수":
         (
             "데이터건수",
             "건"
@@ -1272,7 +1169,7 @@ with tab2:
             "면"
         ),
 
-        "무료 데이터 비율":
+        "무료 비율":
         (
             "무료비율",
             "%"
@@ -1342,19 +1239,23 @@ with tab2:
 
 
     if metric_unit == "%":
-
         text_template = "%{x:.1f}%"
-
         hover_template = (
             "%{y}<br>"
             "%{x:.1f}%"
             "<extra></extra>"
         )
 
+    elif metric_col == "중앙주차면":
+        text_template = "%{x:,.1f}"
+        hover_template = (
+            "%{y}<br>"
+            "%{x:,.1f}면"
+            "<extra></extra>"
+        )
+
     else:
-
         text_template = "%{x:,.0f}"
-
         hover_template = (
             "%{y}<br>"
             "%{x:,.0f}"
@@ -1470,6 +1371,10 @@ with tab3:
         f"### {selected_district}의 내부 구성"
     )
 
+    st.caption(
+        "요금 유형·최소 주차면수 필터와 관계없이, "
+        "선택한 자치구의 전체 등록 기록을 분석합니다."
+    )
 
     left, right = st.columns(
         [
@@ -1553,6 +1458,12 @@ with tab3:
 
 
         donut.update_traces(
+            hovertemplate=(
+                "요금 유형: %{label}<br>"
+                "주차장 등록 건수: %{value:,.0f}건<br>"
+                "비율: %{percent:.1%}"
+                "<extra></extra>"
+            ),
 
             textposition=
             "outside",
@@ -1586,7 +1497,7 @@ with tab3:
 
                     text=(
                         f"<b>{len(view):,}</b>"
-                        "<br>등록 건수"
+                        "<br>주차장 등록 건수"
                     ),
 
                     x=
@@ -1792,9 +1703,9 @@ with tab3:
         {
 
             "지표": [
-                "등록 건수",
+                "주차장 등록 건수",
                 "총 주차면수",
-                "규모 중앙값",
+                "주차장 규모 중앙값",
                 "무료 비율"
             ],
 
@@ -1868,7 +1779,7 @@ with tab3:
 
         hovertemplate=(
             "%{x}<br>"
-            "자치구 평균 대비 %{y:.4f}배"
+            "자치구 평균 대비 %{y:.2f}배"
             "<extra></extra>"
         )
 
@@ -1940,6 +1851,14 @@ with tab4:
         "### 선택한 자치구의 주차장 목록"
     )
 
+    if not selected_fee_types:
+        st.info("요금 유형을 하나 이상 선택해 주세요.")
+
+    elif filtered_view.empty:
+        st.info(
+            "조건에 맞는 기록이 없습니다. "
+            "최소 주차면수를 낮추거나 요금 유형을 추가해 주세요."
+        )
 
     display_cols = [
 
@@ -1990,8 +1909,8 @@ with tab4:
             f"{selected_district}.csv"
         ),
 
-        mime=
-        "text/csv"
+        mime="text/csv",
+        disabled=filtered_view.empty
 
     )
 
@@ -2014,10 +1933,11 @@ with tab4:
     )
 
     st.markdown(
-        "**집계 기준과 중복** · 등록 건수는 원자료의 행 수이며, "
+        "**집계 기준과 중복** · 주차장 등록 건수는 원자료의 행 수이며, "
         "총 주차면수는 유효한 주차구획수의 합계입니다. "
         "관리번호가 반복된다는 이유만으로 기록을 삭제하지 않았습니다. "
-        "동일 시설이 중복 등록됐다면 건수와 합계가 실제보다 커질 수 있습니다."
+        "동일 시설이 중복 등록됐다면 주차장 등록 건수와 총 주차면수가 "
+        "실제보다 커질 수 있습니다."
     )
 
     st.markdown(
@@ -2028,9 +1948,10 @@ with tab4:
     )
 
     st.markdown(
-        "**요금 유형** · 제공기관의 유료·무료·혼합 분류를 사용하며, "
+        "**요금 유형과 무료 비율** · 제공기관의 유료·무료·혼합 분류를 사용하며, "
         "그 외 값과 빈 값은 ‘기타·미상’으로 표시합니다. "
-        "무료 비율은 해당 구의 전체 등록 건수 중 ‘무료’로 등록된 비율입니다. "
+        "무료 비율은 해당 구의 전체 주차장 등록 건수 중 "
+        "‘무료’로 등록된 건수가 차지하는 비율입니다. "
         "혼합은 무료에 포함하지 않으며, "
         "요금 유형만으로 실제 결제 금액이나 무료 이용 조건을 알 수는 없습니다."
     )
@@ -2039,8 +1960,9 @@ with tab4:
         "**자치구 평균 대비 배율** · 자치구별 지표를 같은 비중으로 평균 낸 뒤, "
         "선택한 구의 값을 그 평균으로 나눕니다. "
         "**1배는 평균, 0.5배는 평균의 절반, 2배는 평균의 두 배**입니다. "
-        "규모 중앙값과 무료 비율도 각각 자치구별 값의 평균을 기준으로 하므로, "
-        "서울 전체 기록에서 직접 구한 중앙값·무료 비율과는 다를 수 있습니다."
+        "주차장 규모 중앙값은 각 구의 중앙값을 평균 낸 값과, "
+        "무료 비율은 각 구의 무료 비율을 평균 낸 값과 비교합니다. "
+        "이때 주차장 등록 건수와 관계없이 각 구를 같은 비중으로 반영합니다."
     )
 
     st.markdown(
@@ -2083,7 +2005,7 @@ with tab4:
     st.info(
         "해석의 한계 · 중복 등록, 자료 누락, 기록별 기준일 차이로 "
         "실제 전체 현황과 차이가 있을 수 있습니다. "
-        "등록 건수가 적은 구는 일부 기록만으로 비율이 크게 달라질 수 있습니다. "
+        "주차장 등록 건수가 적은 구는 일부 기록만으로 비율이 크게 달라질 수 있습니다. "
         "주차 수요·실시간 빈자리·세부 요금 조건을 반영하지 않았으므로, "
         "주차면수가 많다고 주차 공간이 충분하다고 판단할 수는 없습니다. "
         "방문 전 실제 이용 가능 여부와 요금은 운영기관 안내를 확인해 주세요."
@@ -2105,13 +2027,13 @@ with tab4:
     ):
 
         st.write(
-            "전국 주차장 데이터 건수:",
+            "전국 주차장 등록 건수:",
             len(data)
         )
 
 
         st.write(
-            "서울 공영주차장 데이터 건수:",
+            "서울 공영주차장 등록 건수:",
             len(seoul)
         )
 
